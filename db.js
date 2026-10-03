@@ -1,33 +1,68 @@
-const Database = require('better-sqlite3');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
 const dataDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
-const db = new Database(path.join(dataDir, 'affitcrash.db'));
+const DB_FILE = path.join(dataDir, 'affitcrash.json');
 
-db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        license_key TEXT UNIQUE NOT NULL,
-        role TEXT DEFAULT 'user',
-        approved INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        last_login DATETIME
-    )
-`);
+let data = { users: [], logs: [], nextId: 1 };
 
-db.exec(`
-    CREATE TABLE IF NOT EXISTS login_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL,
-        action TEXT NOT NULL,
-        ip TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-`);
+function load() {
+    if (fs.existsSync(DB_FILE)) {
+        try {
+            data = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+            if (!data.users) data.users = [];
+            if (!data.logs) data.logs = [];
+            if (!data.nextId) data.nextId = 1;
+        } catch (e) { console.error('DB load error:', e); }
+    }
+}
 
-module.exports = db;
+function save() {
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    } catch (e) { console.error('DB save error:', e); }
+}
+
+load();
+
+module.exports = {
+    // === USERS ===
+    getUser: (username) => data.users.find(u => u.username === username) || null,
+    getUserById: (id) => data.users.find(u => u.id === id) || null,
+    getUserByKey: (key) => data.users.find(u => u.license_key === key) || null,
+    getAllUsers: () => data.users,
+    countUsers: () => data.users.length,
+
+    createUser: (user) => {
+        user.id = data.nextId++;
+        user.created_at = new Date().toISOString();
+        user.last_login = null;
+        data.users.push(user);
+        save();
+        return user;
+    },
+
+    updateUser: (id, patch) => {
+        const u = data.users.find(x => x.id === id);
+        if (u) { Object.assign(u, patch); save(); }
+        return u;
+    },
+
+    deleteUser: (id) => {
+        const i = data.users.findIndex(x => x.id === id);
+        if (i >= 0) { data.users.splice(i, 1); save(); }
+    },
+
+    // === LOGS ===
+    addLog: (username, action, ip) => {
+        data.logs.unshift({
+            username, action, ip,
+            timestamp: new Date().toISOString(),
+        });
+        if (data.logs.length > 500) data.logs.length = 500;
+        save();
+    },
+    getLogs: () => data.logs.slice(0, 200),
+};
