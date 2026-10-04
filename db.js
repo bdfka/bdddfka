@@ -1,68 +1,57 @@
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-const DB_FILE = path.join(dataDir, 'affitcrash.json');
-
-let data = { users: [], logs: [], nextId: 1 };
-
-function load() {
-    if (fs.existsSync(DB_FILE)) {
-        try {
-            data = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
-            if (!data.users) data.users = [];
-            if (!data.logs) data.logs = [];
-            if (!data.nextId) data.nextId = 1;
-        } catch (e) { console.error('DB load error:', e); }
-    }
-}
-
-function save() {
-    try {
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    } catch (e) { console.error('DB save error:', e); }
-}
-
-load();
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+});
 
 module.exports = {
-    // === USERS ===
-    getUser: (username) => data.users.find(u => u.username === username) || null,
-    getUserById: (id) => data.users.find(u => u.id === id) || null,
-    getUserByKey: (key) => data.users.find(u => u.license_key === key) || null,
-    getAllUsers: () => data.users,
-    countUsers: () => data.users.length,
-
-    createUser: (user) => {
-        user.id = data.nextId++;
-        user.created_at = new Date().toISOString();
-        user.last_login = null;
-        data.users.push(user);
-        save();
-        return user;
+    getUser: async (username) => {
+        const r = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+        return r.rows[0] || null;
     },
-
-    updateUser: (id, patch) => {
-        const u = data.users.find(x => x.id === id);
-        if (u) { Object.assign(u, patch); save(); }
-        return u;
+    getUserById: async (id) => {
+        const r = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+        return r.rows[0] || null;
     },
-
-    deleteUser: (id) => {
-        const i = data.users.findIndex(x => x.id === id);
-        if (i >= 0) { data.users.splice(i, 1); save(); }
+    getUserByKey: async (key) => {
+        const r = await pool.query('SELECT * FROM users WHERE license_key = $1', [key]);
+        return r.rows[0] || null;
     },
-
-    // === LOGS ===
-    addLog: (username, action, ip) => {
-        data.logs.unshift({
-            username, action, ip,
-            timestamp: new Date().toISOString(),
-        });
-        if (data.logs.length > 500) data.logs.length = 500;
-        save();
+    getAllUsers: async () => {
+        const r = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
+        return r.rows;
     },
-    getLogs: () => data.logs.slice(0, 200),
+    countUsers: async () => {
+        const r = await pool.query('SELECT COUNT(*) as c FROM users');
+        return parseInt(r.rows[0].c);
+    },
+    createUser: async (user) => {
+        const r = await pool.query(`
+            INSERT INTO users (username, password_hash, license_key, role, approved)
+            VALUES ($1, $2, $3, $4, $5) RETURNING *
+        `, [user.username, user.password_hash, user.license_key, user.role, user.approved]);
+        return r.rows[0];
+    },
+    updateUser: async (id, patch) => {
+        const keys = Object.keys(patch);
+        const values = Object.values(patch);
+        const set = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+        const r = await pool.query(
+            `UPDATE users SET ${set} WHERE id = $${keys.length + 1} RETURNING *`,
+            [...values, id]);
+        return r.rows[0];
+    },
+    deleteUser: async (id) => {
+        await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    },
+    addLog: async (username, action, ip) => {
+        await pool.query(
+            'INSERT INTO login_logs (username, action, ip) VALUES ($1, $2, $3)',
+            [username, action, ip]);
+    },
+    getLogs: async () => {
+        const r = await pool.query('SELECT * FROM login_logs ORDER BY timestamp DESC LIMIT 200');
+        return r.rows;
+    },
 };
