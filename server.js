@@ -3,7 +3,7 @@ const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
-const licenseRoutes = require('./routes/license');
+const shopRoutes = require('./routes/shop');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,7 +18,7 @@ app.use((req, res, next) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/license', licenseRoutes);
+app.use('/api/shop', shopRoutes);
 
 app.get('/', (req, res) => {
     res.json({ status: 'ok', service: 'AffitCrash Server', version: '1.0.0', time: new Date().toISOString() });
