@@ -17,62 +17,51 @@ function requireAdmin(req, res, next) {
 }
 
 router.get('/users', requireAdmin, async (req, res) => {
-    try {
-        const users = await db.getAllUsers();
-        res.json({ success: true, users });
-    } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+    res.json({ success: true, users: await db.getAllUsers() });
 });
 
 router.post('/approve', requireAdmin, async (req, res) => {
-    try {
-        const { username, approved } = req.body;
-        const u = await db.getUser(username);
-        if (!u) return res.status(404).json({ error: 'Не найден' });
-        await db.updateUser(u.id, { approved: approved ? 1 : 0 });
-        await db.addLog(req.user.username, `${approved ? 'approve' : 'revoke'}:${username}`, req.ip);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+    const { username, approved } = req.body;
+    const u = await db.getUser(username);
+    if (!u) return res.status(404).json({ error: 'Не найден' });
+    await db.updateUser(u.id, { approved: approved ? 1 : 0 });
+    res.json({ success: true });
 });
 
 router.post('/set-role', requireAdmin, async (req, res) => {
-    try {
-        const { username, role } = req.body;
-        if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: 'Плохая роль' });
-        const u = await db.getUser(username);
-        if (!u) return res.status(404).json({ error: 'Не найден' });
-        await db.updateUser(u.id, { role });
-        await db.addLog(req.user.username, `setrole:${username}:${role}`, req.ip);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+    const { username, role } = req.body;
+    if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: 'Плохая роль' });
+    const u = await db.getUser(username);
+    if (!u) return res.status(404).json({ error: 'Не найден' });
+    await db.updateUser(u.id, { role });
+    res.json({ success: true });
 });
 
 router.post('/delete', requireAdmin, async (req, res) => {
-    try {
-        const { username } = req.body;
-        if (username === req.user.username) return res.status(400).json({ error: 'Себя нельзя' });
-        const u = await db.getUser(username);
-        if (!u) return res.status(404).json({ error: 'Не найден' });
-        await db.deleteUser(u.id);
-        await db.addLog(req.user.username, `delete:${username}`, req.ip);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+    const { username } = req.body;
+    if (username === req.user.username) return res.status(400).json({ error: 'Себя нельзя' });
+    const u = await db.getUser(username);
+    if (!u) return res.status(404).json({ error: 'Не найден' });
+    await db.deleteUser(u.id);
+    res.json({ success: true });
 });
 
-router.get('/logs', requireAdmin, async (req, res) => {
-    try {
-        const logs = await db.getLogs();
-        res.json({ success: true, logs });
-    } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+// --- News ---
+router.get('/news', requireAdmin, async (req, res) => {
+    res.json({ success: true, news: await db.getNews() });
 });
 
-router.get('/stats', requireAdmin, async (req, res) => {
-    try {
-        const users = await db.getAllUsers();
-        const total = users.length;
-        const approved = users.filter(u => u.approved).length;
-        const admins = users.filter(u => u.role === 'admin').length;
-        res.json({ success: true, stats: { total, approved, admins } });
-    } catch (e) { res.status(500).json({ error: 'Ошибка' }); }
+router.post('/news', requireAdmin, async (req, res) => {
+    const { title, content } = req.body;
+    if (!title || !content) return res.status(400).json({ error: 'Заполни все поля' });
+    const n = await db.createNews(title, content, req.user.username);
+    res.json({ success: true, news: n });
+});
+
+// --- Forum (delete) ---
+router.delete('/forum/:id', requireAdmin, async (req, res) => {
+    await db.deleteThread(req.params.id);
+    res.json({ success: true });
 });
 
 module.exports = router;
