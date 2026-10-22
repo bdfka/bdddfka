@@ -66,10 +66,7 @@ router.post('/login', async (req, res) => {
         await db.updateUser(user.id, { last_login: new Date().toISOString() });
         await db.addLog(username, 'login', req.ip);
 
-        const token = jwt.sign(
-            { id: user.id, username: user.username, role: user.role },
-            JWT_SECRET,
-            { expiresIn: '30d' });
+        const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
 
         res.json({
             success: true,
@@ -101,8 +98,7 @@ router.post('/change-password', async (req, res) => {
         const auth = req.headers.authorization;
         if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Нет токена' });
         let d;
-        try { d = jwt.verify(auth.substring(7), JWT_SECRET); }
-        catch { return res.status(401).json({ error: 'Плохой токен' }); }
+        try { d = jwt.verify(auth.substring(7), JWT_SECRET); } catch { return res.status(401).json({ error: 'Плохой токен' }); }
 
         const { newPassword } = req.body;
         if (!newPassword || newPassword.length < 4) return res.status(400).json({ error: 'Короткий' });
@@ -121,21 +117,14 @@ router.get('/me', async (req, res) => {
         const auth = req.headers.authorization;
         if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Нет токена' });
         let d;
-        try { d = jwt.verify(auth.substring(7), JWT_SECRET); }
-        catch { return res.status(401).json({ error: 'Плохой токен' }); }
+        try { d = jwt.verify(auth.substring(7), JWT_SECRET); } catch { return res.status(401).json({ error: 'Плохой токен' }); }
 
         const u = await db.getUserById(d.id);
         if (!u) return res.status(404).json({ error: 'Не найден' });
 
         res.json({
             success: true,
-            user: {
-                username: u.username,
-                role: u.role,
-                licenseKey: u.license_key,
-                approved: u.approved === 1,
-                createdAt: u.created_at,
-            },
+            user: { username: u.username, role: u.role, licenseKey: u.license_key, approved: u.approved === 1, createdAt: u.created_at }
         });
     } catch (e) {
         console.error(e);
